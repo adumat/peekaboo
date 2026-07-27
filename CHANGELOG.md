@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/adumat/peekaboo/compare/v0.2.0...v0.2.1) (2026-07-27)
+
+
+### Bug Fixes
+
+* replace seek-to-live with gentle playbackRate catch-up ([252bfa2](https://github.com/adumat/peekaboo/commit/252bfa2fe237e3769eaccf89a39794ff7e5e6e7e))
+
 ## [0.2.0](https://github.com/adumat/peekaboo/compare/v0.1.1...v0.2.0) (2026-07-27)
 
 
