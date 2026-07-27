@@ -21,6 +21,7 @@ export class Player {
 	private timer: ReturnType<typeof setInterval> | null = null;
 	private lastTime = 0;
 	private lastProgress = 0;
+	private reconnects = 0;
 
 	constructor(
 		private audio: HTMLAudioElement,
@@ -38,6 +39,25 @@ export class Player {
 
 	get playing(): boolean {
 		return this.selection.length > 0;
+	}
+
+	/** how many seconds behind the live edge we currently are */
+	get lag(): number {
+		const b = this.audio.buffered;
+		if (!b.length) return 0;
+		return Math.max(0, b.end(b.length - 1) - this.audio.currentTime);
+	}
+
+	/** seconds buffered in the current live range */
+	get bufferSpan(): number {
+		const b = this.audio.buffered;
+		if (!b.length) return 0;
+		const i = b.length - 1;
+		return Math.max(0, b.end(i) - b.start(i));
+	}
+
+	get reconnectCount(): number {
+		return this.reconnects;
 	}
 
 	private url(bust = false): string {
@@ -86,6 +106,7 @@ export class Player {
 
 	private reconnect(msg: string): void {
 		if (!this.playing) return;
+		this.reconnects++;
 		this.emit(msg);
 		this.audio.src = this.url(true);
 		void this.audio.play().catch(() => {});
