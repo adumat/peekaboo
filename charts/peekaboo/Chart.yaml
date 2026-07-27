@@ -3,7 +3,7 @@ name: peekaboo
 description: Self-hosted audio + video baby monitor for your go2rtc cameras
 type: application
 version: 0.1.0
-appVersion: "0.0.1" # x-release-please-version
+appVersion: 0.0.1
 home: https://github.com/adumat/peekaboo
 sources:
   - https://github.com/adumat/peekaboo
