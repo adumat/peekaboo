@@ -10,11 +10,11 @@
  */
 
 const WATCHDOG_MS = 1000;
-const TARGET_LAG_S = 1.5; // latency we aim to sit at, behind the live edge
-const CATCHUP_HIGH_S = 2.5; // drift past this -> speed up a touch
-const CATCHUP_LOW_S = 1.5; // back under this -> normal speed (hysteresis)
+const TARGET_LAG_S = 2; // latency we sync to, behind the live edge (also the buffer left)
+const CATCHUP_HIGH_S = 3; // drift past this -> speed up a touch
+const CATCHUP_LOW_S = 2; // back under this -> normal speed (hysteresis)
 const CATCHUP_RATE = 1.05; // gentle, pitch-preserved catch-up
-const HARD_SEEK_S = 6; // only an egregious gap warrants an audible jump
+const HARD_SEEK_S = 6; // egregious gap -> jump to live
 const STALL_TIMEOUT_S = 8; // no playback progress for this long -> reconnect
 
 export type StatusListener = (status: string, playing: boolean) => void;
@@ -26,6 +26,7 @@ export class Player {
 	private lastTime = 0;
 	private lastProgress = 0;
 	private reconnects = 0;
+	private synced = false; // did we jump to the live edge for this connection yet?
 
 	constructor(
 		private audio: HTMLAudioElement,
@@ -66,6 +67,7 @@ export class Player {
 		this.selection = [...new Set(selection)].sort();
 		this.label = label;
 		if (!this.selection.length) return this.stop();
+		this.synced = false;
 		this.audio.playbackRate = 1;
 		this.audio.src = this.url();
 		void this.audio.play().catch(() => {});
@@ -85,8 +87,9 @@ export class Player {
 		this.emit('In pausa');
 	}
 
-	/** Re-evaluate latency now (e.g. when the tab becomes visible again). */
+	/** Re-lock to the live edge now (e.g. when the tab becomes visible again). */
 	resync(): void {
+		this.synced = false;
 		this.adjustLatency();
 	}
 
@@ -102,6 +105,7 @@ export class Player {
 	private reconnect(msg: string): void {
 		if (!this.playing) return;
 		this.reconnects++;
+		this.synced = false;
 		this.audio.playbackRate = 1;
 		this.emit(msg);
 		this.audio.src = this.url(true);
@@ -132,24 +136,44 @@ export class Player {
 		this.adjustLatency();
 	}
 
-	/** Keep latency near TARGET: gently speed up when behind, jump only if huge. */
+	/**
+	 * Keep playback near the live edge. The stream starts with a burst backlog,
+	 * so once per connection we JUMP to the live edge (leaving TARGET seconds of
+	 * buffer). After that, small drift is trimmed with playbackRate, and only an
+	 * egregious gap warrants another jump.
+	 */
 	private adjustLatency(): void {
 		if (!this.playing || this.audio.paused) return;
-		const lag = this.lag;
-		if (lag > HARD_SEEK_S) {
-			const b = this.audio.buffered;
-			if (b.length) {
-				try {
-					this.audio.currentTime = Math.max(0, b.end(b.length - 1) - TARGET_LAG_S);
-				} catch {
-					/* not seekable */
-				}
+		const b = this.audio.buffered;
+		if (!b.length) return;
+		const end = b.end(b.length - 1);
+		const lag = end - this.audio.currentTime;
+
+		const jumpToLive = () => {
+			try {
+				this.audio.currentTime = Math.max(0, end - TARGET_LAG_S);
+			} catch {
+				/* not seekable */
 			}
+		};
+
+		// one-time jump to live, once a startup backlog has actually built up
+		if (!this.synced && lag > TARGET_LAG_S + 1) {
+			jumpToLive();
+			this.synced = true;
 			this.audio.playbackRate = 1;
 			return;
 		}
-		if (lag > CATCHUP_HIGH_S) this.audio.playbackRate = CATCHUP_RATE;
-		else if (lag < CATCHUP_LOW_S) this.audio.playbackRate = 1;
+
+		// maintenance
+		if (lag > HARD_SEEK_S) {
+			jumpToLive();
+			this.audio.playbackRate = 1;
+		} else if (lag > CATCHUP_HIGH_S) {
+			this.audio.playbackRate = CATCHUP_RATE;
+		} else if (lag < CATCHUP_LOW_S) {
+			this.audio.playbackRate = 1;
+		}
 	}
 
 	private setMediaSession(): void {

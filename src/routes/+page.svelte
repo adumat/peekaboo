@@ -267,11 +267,14 @@
 
 	.videos {
 		flex: 1;
+		min-height: 0;
 		display: grid;
 		gap: 8px;
-		padding: 0 12px;
-		align-content: start;
+		padding: 0 12px 8px;
 		grid-template-columns: 1fr;
+		/* share the available height so every selected tile stays on screen
+		   (an off-viewport iframe gets its video auto-paused by the browser) */
+		grid-auto-rows: 1fr;
 	}
 	.videos.side {
 		grid-template-columns: 1fr 1fr;
@@ -279,7 +282,7 @@
 
 	.tile {
 		position: relative;
-		aspect-ratio: 16 / 9;
+		min-height: 0;
 		background: #000;
 		border-radius: 12px;
 		overflow: hidden;
