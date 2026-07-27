@@ -1,16 +1,20 @@
 /**
  * Client-side live-audio player: owns the <audio> element, wires up MediaSession
- * (lockscreen / screen-off controls) and keeps playback pinned to the live edge.
+ * (lockscreen / screen-off controls) and keeps playback close to the live edge.
  *
- * Latency control is the whole point: an <audio> element playing an endless MP3
- * stream keeps buffering and, after any rebuffer, drifts further and further
- * behind live (this is how the old build crept toward ~10s). We watch the gap
- * between the buffered edge and currentTime and jump forward when it grows.
+ * Latency control: an endless MP3 stream is NOT seekable, and it arrives with an
+ * initial burst (go2rtc hands over a few seconds at once), so hard-seeking to the
+ * buffered edge just throws the buffer away and stutters forever. Instead we nudge
+ * playbackRate slightly faster when we drift behind live and drop back to 1x once
+ * caught up — inaudible, no skips. A hard jump is a last resort for huge gaps only.
  */
 
-const WATCHDOG_MS = 2000;
-const MAX_LAG_S = 3; // fall more than this behind the live edge -> jump forward
-const RESYNC_LEAD_S = 0.3; // leave a hair of buffer so the jump doesn't stall
+const WATCHDOG_MS = 1000;
+const TARGET_LAG_S = 1.5; // latency we aim to sit at, behind the live edge
+const CATCHUP_HIGH_S = 2.5; // drift past this -> speed up a touch
+const CATCHUP_LOW_S = 1.5; // back under this -> normal speed (hysteresis)
+const CATCHUP_RATE = 1.05; // gentle, pitch-preserved catch-up
+const HARD_SEEK_S = 6; // only an egregious gap warrants an audible jump
 const STALL_TIMEOUT_S = 8; // no playback progress for this long -> reconnect
 
 export type StatusListener = (status: string, playing: boolean) => void;
@@ -27,13 +31,11 @@ export class Player {
 		private audio: HTMLAudioElement,
 		private onStatus: StatusListener
 	) {
-		audio.addEventListener('playing', () => {
-			this.emit('Live');
-			this.resync();
-		});
+		audio.preservesPitch = true; // keep pitch constant when we nudge playbackRate
+		audio.addEventListener('playing', () => this.emit('Live'));
 		audio.addEventListener('waiting', () => this.emit('Buffering…'));
 		// Reconnect ONLY on a real error (not on waiting/stalled, which fire during
-		// normal buffering and caused an abort loop in the old build).
+		// normal buffering).
 		audio.addEventListener('error', () => this.reconnect('Errore, riconnetto…'));
 	}
 
@@ -60,15 +62,11 @@ export class Player {
 		return this.reconnects;
 	}
 
-	private url(bust = false): string {
-		const q = bust ? `?t=${Date.now()}` : '';
-		return `/audio/${this.selection.join(',')}${q}`;
-	}
-
 	play(selection: string[], label: string): void {
 		this.selection = [...new Set(selection)].sort();
 		this.label = label;
 		if (!this.selection.length) return this.stop();
+		this.audio.playbackRate = 1;
 		this.audio.src = this.url();
 		void this.audio.play().catch(() => {});
 		this.setMediaSession();
@@ -80,33 +78,31 @@ export class Player {
 		this.selection = [];
 		this.stopWatchdog();
 		this.audio.pause();
+		this.audio.playbackRate = 1;
 		this.audio.removeAttribute('src');
 		this.audio.load();
 		if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none';
 		this.emit('In pausa');
 	}
 
-	/** Jump to the live edge if we've drifted too far behind it. */
+	/** Re-evaluate latency now (e.g. when the tab becomes visible again). */
 	resync(): void {
-		const b = this.audio.buffered;
-		if (!b.length) return;
-		const end = b.end(b.length - 1);
-		if (end - this.audio.currentTime > MAX_LAG_S) {
-			try {
-				this.audio.currentTime = Math.max(0, end - RESYNC_LEAD_S);
-			} catch {
-				/* not seekable yet */
-			}
-		}
+		this.adjustLatency();
 	}
 
 	destroy(): void {
 		this.stopWatchdog();
 	}
 
+	private url(bust = false): string {
+		const q = bust ? `?t=${Date.now()}` : '';
+		return `/audio/${this.selection.join(',')}${q}`;
+	}
+
 	private reconnect(msg: string): void {
 		if (!this.playing) return;
 		this.reconnects++;
+		this.audio.playbackRate = 1;
 		this.emit(msg);
 		this.audio.src = this.url(true);
 		void this.audio.play().catch(() => {});
@@ -126,14 +122,34 @@ export class Player {
 
 	private tick(): void {
 		if (!this.playing) return;
-		if (this.audio.currentTime > this.lastTime + 0.1) {
+		if (this.audio.currentTime > this.lastTime + 0.05) {
 			this.lastTime = this.audio.currentTime;
 			this.lastProgress = Date.now();
 		} else if (Date.now() - this.lastProgress > STALL_TIMEOUT_S * 1000) {
 			this.lastProgress = Date.now();
 			return this.reconnect('Bloccato, riconnetto…');
 		}
-		this.resync();
+		this.adjustLatency();
+	}
+
+	/** Keep latency near TARGET: gently speed up when behind, jump only if huge. */
+	private adjustLatency(): void {
+		if (!this.playing || this.audio.paused) return;
+		const lag = this.lag;
+		if (lag > HARD_SEEK_S) {
+			const b = this.audio.buffered;
+			if (b.length) {
+				try {
+					this.audio.currentTime = Math.max(0, b.end(b.length - 1) - TARGET_LAG_S);
+				} catch {
+					/* not seekable */
+				}
+			}
+			this.audio.playbackRate = 1;
+			return;
+		}
+		if (lag > CATCHUP_HIGH_S) this.audio.playbackRate = CATCHUP_RATE;
+		else if (lag < CATCHUP_LOW_S) this.audio.playbackRate = 1;
 	}
 
 	private setMediaSession(): void {
