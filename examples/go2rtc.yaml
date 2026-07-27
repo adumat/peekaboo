@@ -1,0 +1,12 @@
+# Minimal go2rtc config that pairs with config.example.yaml.
+# Full docs: https://github.com/AlexxIT/go2rtc
+
+streams:
+  living-room: rtsp://user:pass@192.168.1.50/stream1
+  bedroom: rtsp://user:pass@192.168.1.51/stream1
+
+api:
+  listen: ":1984" # WebRTC page + API  -> peekaboo `go2rtc.url`
+
+rtsp:
+  listen: ":8554" # RTSP server        -> peekaboo `go2rtc.rtsp`

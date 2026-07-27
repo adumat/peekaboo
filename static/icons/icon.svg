@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Peekaboo">
+	<defs>
+		<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+			<stop offset="0" stop-color="#3aa03e" />
+			<stop offset="1" stop-color="#1f5c22" />
+		</linearGradient>
+	</defs>
+	<rect width="512" height="512" rx="112" fill="url(#bg)" />
+	<!-- eyes peeking, then partly hidden by the blanket drawn on top -->
+	<circle cx="196" cy="250" r="62" fill="#ffffff" />
+	<circle cx="316" cy="250" r="62" fill="#ffffff" />
+	<circle cx="208" cy="262" r="27" fill="#173f19" />
+	<circle cx="304" cy="262" r="27" fill="#173f19" />
+	<rect x="84" y="292" width="344" height="150" rx="30" fill="#ffffff" />
+</svg>

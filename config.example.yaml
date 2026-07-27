@@ -1,0 +1,22 @@
+# Peekaboo configuration. Mount this file at /config/config.yaml
+# (or point PEEKABOO_CONFIG at it).
+
+go2rtc:
+  # Base URL the BROWSER loads live video from (go2rtc's built-in WebRTC page).
+  # Must be reachable from your phone/laptop.
+  url: "http://go2rtc.example.lan:1984"
+  # host:port Peekaboo's audio pipeline (ffmpeg) pulls RTSP from — reachable from
+  # the Peekaboo container. go2rtc's default RTSP port is 8554.
+  rtsp: "go2rtc:8554"
+
+# Seconds to keep an audio stream (ffmpeg) alive after the last listener leaves,
+# so a quick reload doesn't respawn it. Also settable via PEEKABOO_IDLE_TIMEOUT.
+idleTimeout: 15
+
+# Cameras to expose. `name` is the go2rtc stream id; `label` is shown in the UI.
+# Peekaboo lets you listen to any combination of these (mixed on demand).
+cameras:
+  - name: living-room
+    label: "Living room"
+  - name: bedroom
+    label: "Bedroom"
