@@ -15,7 +15,6 @@ Ideas and deferred work, roughly in priority order. Not commitments.
 ## Packaging & ops
 
 - [ ] Multi-arch image (add `linux/arm64`).
-- [ ] Publish the Helm chart to an OCI registry.
 - [ ] Health/readiness endpoint distinct from `/`.
 
 ## Design

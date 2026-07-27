@@ -3,7 +3,6 @@
 .svelte-kit
 build
 node_modules
-charts
 examples
 *.md
 config.yaml

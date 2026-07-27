@@ -72,17 +72,14 @@ docker run -d --name peekaboo -p 3000:3000 \
 
 See [`docker-compose.yaml`](docker-compose.yaml), then `docker compose up -d`.
 
-### Kubernetes (Helm)
+### Kubernetes (Flux + app-template)
 
-```bash
-helm install peekaboo ./charts/peekaboo \
-  --set config.go2rtc.rtsp=go2rtc.default.svc.cluster.local:8554 \
-  --set config.go2rtc.url=https://go2rtc.example.lan
-```
-
-Configure cameras, ingress and resources in
-[`charts/peekaboo/values.yaml`](charts/peekaboo/values.yaml). There is no
-built-in authentication — put it behind your own ingress / auth.
+Peekaboo is a plain container, so any Deployment works. With Flux, the
+[bjw-s app-template](https://github.com/bjw-s-labs/helm-charts) chart makes it a
+few lines — see [`examples/helmrelease.yaml`](examples/helmrelease.yaml). Create a
+ConfigMap `peekaboo-config` from your `config.yaml` and expose the Service (port
+3000) through your gateway / ingress. There is no built-in authentication — put
+it behind your own ingress / auth.
 
 ## Development
 
