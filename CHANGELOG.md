@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/adumat/peekaboo/compare/v0.2.2...v0.3.0) (2026-07-27)
+
+
+### Features
+
+* proper app icon (peeking eyes over a blanket) ([4e74b90](https://github.com/adumat/peekaboo/commit/4e74b9065ef0452d57e0f1e0dc8d93a1ab0d9867))
+
 ## [0.2.2](https://github.com/adumat/peekaboo/compare/v0.2.1...v0.2.2) (2026-07-27)
 
 
