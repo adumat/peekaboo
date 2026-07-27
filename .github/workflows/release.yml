@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.rp.outputs.release_created }}
-      tag_name: ${{ steps.rp.outputs.tag_name }}
+      version: ${{ steps.rp.outputs.version }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: rp
@@ -39,8 +39,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=semver,pattern={{version}},value=${{ needs.release-please.outputs.tag_name }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.tag_name }}
+            type=raw,value=${{ needs.release-please.outputs.version }}
             type=raw,value=latest
       - uses: docker/build-push-action@v6
         with:
