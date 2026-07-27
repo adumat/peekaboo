@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/adumat/peekaboo/compare/v0.1.1...v0.2.0) (2026-07-27)
+
+
+### Features
+
+* per-camera zoom/pan, layout toggle, persisted selection, redesigned UI ([65477ac](https://github.com/adumat/peekaboo/commit/65477ac646e00caad1ab513cc6b9693dd7d6d2e3))
+
 ## [0.1.1](https://github.com/adumat/peekaboo/compare/v0.1.0...v0.1.1) (2026-07-27)
 
 
