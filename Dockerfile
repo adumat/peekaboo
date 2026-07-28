@@ -1,7 +1,10 @@
 # syntax=docker/dockerfile:1
 
 # --- build stage: compile the SvelteKit app with yarn ---------------------
-FROM node:22-alpine AS build
+# Pin to the build host's arch (adapter-node output is pure, arch-independent
+# JS): the JS is built ONCE natively instead of emulating yarn under QEMU per
+# target arch, so the multi-arch build is fast.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 WORKDIR /app
 RUN corepack enable
 # install deps against the lockfile first for better layer caching
