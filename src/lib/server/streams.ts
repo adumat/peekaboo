@@ -28,11 +28,33 @@ class Stream {
 
 	private buildArgs(): string[] {
 		const { go2rtc } = getConfig();
-		const rtsp = (name: string) => `rtsp://${go2rtc.rtsp}/${name}`;
-		const inFlags = ['-rtsp_transport', 'tcp', '-fflags', 'nobuffer', '-flags', 'low_delay'];
+		// `?audio=pcma` asks go2rtc for ONLY the camera's native G.711 a-law track:
+		// no h264 to demux (avoids the video-analysis stall + amix dts warnings and
+		// cuts data), and it pins the direct camera codec so go2rtc never routes us
+		// through its on-demand opus transcoder (a `ffmpeg:...#audio=opus` producer,
+		// which would add buffering/latency).
+		const rtsp = (name: string) => `rtsp://${go2rtc.rtsp}/${name}?audio=pcma`;
+		// analyzeduration 0 + probesize 32 are the big latency win: without them
+		// ffmpeg spends ~4s analysing the input before emitting anything (measured),
+		// so on-demand playback starts seconds behind live.
+		const inFlags = [
+			'-rtsp_transport', 'tcp',
+			'-fflags', 'nobuffer',
+			'-flags', 'low_delay',
+			'-analyzeduration', '0',
+			'-probesize', '32'
+		];
 		// -ar 44100 is MANDATORY: Tapo cams emit 8kHz MP3 (MPEG-2.5), which Chrome
 		// silently cannot decode (bytes arrive, playback never starts, no error).
-		const enc = ['-vn', '-c:a', 'libmp3lame', '-b:a', BITRATE, '-ar', '44100', '-ac', '1', '-f', 'mp3', 'pipe:1'];
+		// flush_packets/avioflags direct/write_xing 0 stop the muxer buffering frames.
+		const enc = [
+			'-vn',
+			'-c:a', 'libmp3lame', '-b:a', BITRATE, '-ar', '44100', '-ac', '1',
+			'-flush_packets', '1',
+			'-avioflags', 'direct',
+			'-write_xing', '0',
+			'-f', 'mp3', 'pipe:1'
+		];
 
 		const inputs = this.cameras.flatMap((c) => [...inFlags, '-i', rtsp(c)]);
 		if (this.cameras.length === 1) return [...inputs, ...enc];

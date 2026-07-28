@@ -10,9 +10,9 @@
  */
 
 const WATCHDOG_MS = 1000;
-const TARGET_LAG_S = 2; // latency we sync to, behind the live edge (also the buffer left)
-const CATCHUP_HIGH_S = 3; // drift past this -> speed up a touch
-const CATCHUP_LOW_S = 2; // back under this -> normal speed (hysteresis)
+const TARGET_LAG_S = 1; // latency we sync to, behind the live edge (also the buffer left)
+const CATCHUP_HIGH_S = 2.5; // drift past this -> speed up a touch
+const CATCHUP_LOW_S = 1.5; // back under this -> normal speed (hysteresis)
 const CATCHUP_RATE = 1.05; // gentle, pitch-preserved catch-up
 const HARD_SEEK_S = 6; // egregious gap -> jump to live
 const STALL_TIMEOUT_S = 8; // no playback progress for this long -> reconnect
