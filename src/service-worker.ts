@@ -11,10 +11,15 @@ import { build, files, version } from '$service-worker';
 const sw = self as unknown as ServiceWorkerGlobalScope;
 
 const CACHE = `peekaboo-${version}`;
-const ASSETS = [...build, ...files]; // hashed app JS/CSS + everything in static/
+const ASSETS = new Set([...build, ...files]); // hashed app JS/CSS + everything in static/
 
 sw.addEventListener('install', (event) => {
-	event.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => sw.skipWaiting()));
+	event.waitUntil(
+		caches
+			.open(CACHE)
+			.then((c) => c.addAll([...ASSETS, '/'])) // '/' too, for offline navigation
+			.then(() => sw.skipWaiting())
+	);
 });
 
 sw.addEventListener('activate', (event) => {
@@ -31,24 +36,32 @@ sw.addEventListener('fetch', (event) => {
 	if (req.method !== 'GET') return;
 	const url = new URL(req.url);
 
-	// Never touch live audio, the config API, or cross-origin (go2rtc) requests.
+	// Always hit the network: cross-origin (go2rtc), live audio, the config API,
+	// the SW itself, and the version manifest (must stay fresh so update detection
+	// and the "new version" prompt work).
 	if (url.origin !== location.origin) return;
 	if (url.pathname.startsWith('/audio/') || url.pathname.startsWith('/api/')) return;
+	if (url.pathname === '/service-worker.js' || url.pathname === '/_app/version.json') return;
 
-	// Precached build assets are immutable+hashed -> serve from cache. Anything
-	// else (incl. the config-driven shell) is network-first, cache as fallback.
-	event.respondWith(
-		caches.match(req).then((hit) => {
-			if (hit) return hit;
-			return fetch(req)
+	// Immutable, hashed build assets -> cache-first.
+	if (ASSETS.has(url.pathname)) {
+		event.respondWith(caches.match(req).then((hit) => hit ?? fetch(req)));
+		return;
+	}
+
+	// Navigations -> network-first (fresh config-driven shell), cached shell offline.
+	if (req.mode === 'navigate') {
+		event.respondWith(
+			fetch(req)
 				.then((res) => {
-					if (res.ok && res.type === 'basic') {
-						const copy = res.clone();
-						caches.open(CACHE).then((c) => c.put(req, copy));
-					}
+					const copy = res.clone();
+					caches.open(CACHE).then((c) => c.put('/', copy));
 					return res;
 				})
-				.catch(() => caches.match('/') as Promise<Response>);
-		})
-	);
+				.catch(() => caches.match('/') as Promise<Response>)
+		);
+		return;
+	}
+
+	// Everything else: straight to the network, no caching.
 });

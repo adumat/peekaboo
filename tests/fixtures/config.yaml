@@ -1,0 +1,8 @@
+go2rtc:
+  url: "http://go2rtc.test"
+  rtsp: "go2rtc.test:8554"
+cameras:
+  - name: sofias-room
+    label: "Sofia"
+  - name: nicolos-room
+    label: "Nicolò"

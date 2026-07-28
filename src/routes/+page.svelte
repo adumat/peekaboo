@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { updated } from '$app/state';
 	import { Player } from '$lib/player';
 	import { load, save } from '$lib/storage';
 
@@ -15,6 +16,7 @@
 	let layout = $state<'stack' | 'side'>('stack');
 	let showTiles = $state(true);
 	let zoom = $state<Record<string, Zoom>>({});
+	let solo = $state<string | null>(null);
 
 	let playing = $state(false);
 	let status = $state('In pausa');
@@ -27,6 +29,8 @@
 
 	const shownCams = $derived(cameras.filter((c) => selected.includes(c.name)));
 	const selectedLabel = $derived(shownCams.map((c) => c.label).join(' + '));
+	// which tiles to render: the solo'd camera, else every selected one
+	const tiles = $derived(solo && selected.includes(solo) ? cameras.filter((c) => c.name === solo) : shownCams);
 
 	// ---- persistence (client-only effects) --------------------------------
 	$effect(() => {
@@ -52,16 +56,15 @@
 		else apply();
 	}
 	function toggleCamera(name: string) {
-		selected = selected.includes(name)
-			? selected.filter((n) => n !== name)
-			: [...selected, name];
+		selected = selected.includes(name) ? selected.filter((n) => n !== name) : [...selected, name];
+		if (solo && !selected.includes(solo)) solo = null;
 		if (playing) apply(); // re-apply the mix live
 	}
 	function toggleLayout() {
 		layout = layout === 'stack' ? 'side' : 'stack';
 	}
 
-	// ---- per-camera zoom & pan --------------------------------------------
+	// ---- per-camera zoom, pan & tap-to-solo -------------------------------
 	const zoomFor = (name: string): Zoom => zoom[name] ?? DEFAULT_ZOOM;
 	const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -76,25 +79,30 @@
 	function zoomReset(name: string) {
 		setZoom(name, { ...DEFAULT_ZOOM });
 	}
+	function toggleSolo(name: string) {
+		solo = solo === name ? null : name;
+	}
 
-	let drag: { name: string; sx: number; sy: number; ox: number; oy: number; w: number; h: number } | null = null;
-	function panStart(e: PointerEvent, name: string) {
+	type Drag = { name: string; sx: number; sy: number; ox: number; oy: number; w: number; h: number; zoomed: boolean; moved: boolean };
+	let drag: Drag | null = null;
+	function pointerDown(e: PointerEvent, name: string) {
 		const z = zoomFor(name);
-		if (z.s <= 1) return; // nothing to pan when not zoomed
 		const el = e.currentTarget as HTMLElement;
 		el.setPointerCapture(e.pointerId);
-		drag = { name, sx: e.clientX, sy: e.clientY, ox: z.x, oy: z.y, w: el.clientWidth, h: el.clientHeight };
+		drag = { name, sx: e.clientX, sy: e.clientY, ox: z.x, oy: z.y, w: el.clientWidth, h: el.clientHeight, zoomed: z.s > 1, moved: false };
 	}
-	function panMove(e: PointerEvent) {
+	function pointerMove(e: PointerEvent) {
 		if (!drag) return;
+		if (Math.abs(e.clientX - drag.sx) > 6 || Math.abs(e.clientY - drag.sy) > 6) drag.moved = true;
+		if (!drag.zoomed) return; // only pan when zoomed
 		const z = zoomFor(drag.name);
 		const lim = 50 * (1 - 1 / z.s); // keep the frame covering the tile
-		// translate() sits inside scale(), so a screen-space delta is magnified by s
 		const dx = ((e.clientX - drag.sx) / drag.w) * 100 / z.s;
 		const dy = ((e.clientY - drag.sy) / drag.h) * 100 / z.s;
 		setZoom(drag.name, { ...z, x: clamp(drag.ox + dx, -lim, lim), y: clamp(drag.oy + dy, -lim, lim) });
 	}
-	function panEnd() {
+	function pointerUp() {
+		if (drag && !drag.moved) toggleSolo(drag.name); // a tap (not a pan) toggles fullscreen
 		drag = null;
 	}
 
@@ -124,6 +132,8 @@
 		const statsTimer = setInterval(() => {
 			stats = { lag: player.lag, buffer: player.bufferSpan, reconnects: player.reconnectCount };
 		}, 1000);
+		// poll for a newer deployed version -> drives the "update" banner
+		const updTimer = setInterval(() => updated.check(), 60_000);
 
 		const onVis = () => {
 			visible = document.visibilityState === 'visible';
@@ -133,47 +143,41 @@
 
 		return () => {
 			clearInterval(statsTimer);
+			clearInterval(updTimer);
 			document.removeEventListener('visibilitychange', onVis);
 			player.destroy();
 		};
 	});
 </script>
 
+{#if updated.current}
+	<button class="update" onclick={() => location.reload()}>
+		Nuova versione disponibile — tocca per aggiornare
+	</button>
+{/if}
+
 <header class="topbar">
 	<div class="cams">
 		{#each cameras as cam (cam.name)}
-			<button
-				class="chip"
-				class:active={selected.includes(cam.name)}
-				onclick={() => toggleCamera(cam.name)}
-			>
+			<button class="chip" class:active={selected.includes(cam.name)} onclick={() => toggleCamera(cam.name)}>
 				{cam.label}
 			</button>
 		{/each}
 	</div>
 	<div class="controls">
-		<button
-			class="ctl"
-			class:active={showTiles}
-			title="Mostra/nascondi video"
-			onclick={() => (showTiles = !showTiles)}>📹</button
-		>
-		{#if shownCams.length > 1}
-			<button class="ctl" title="Layout" onclick={toggleLayout}>{layout === 'stack' ? '▤' : '▥'}</button>
+		<button class="ctl" class:active={showTiles} aria-label="Mostra/nascondi video" title="Mostra/nascondi video" onclick={() => (showTiles = !showTiles)}>📹</button>
+		{#if solo}
+			<button class="ctl" aria-label="Esci da schermo intero" title="Esci da schermo intero" onclick={() => (solo = null)}>▦</button>
+		{:else if shownCams.length > 1}
+			<button class="ctl" aria-label="Cambia layout" title="Layout" onclick={toggleLayout}>{layout === 'stack' ? '▤' : '▥'}</button>
 		{/if}
-		<button
-			class="ctl play"
-			class:on={playing}
-			disabled={!selected.length}
-			title={playing ? 'Stop' : 'Ascolta'}
-			onclick={togglePlay}>{playing ? '⏹' : '▶'}</button
-		>
+		<button class="ctl play" class:on={playing} disabled={!selected.length} aria-label={playing ? 'Stop' : 'Ascolta'} title={playing ? 'Stop' : 'Ascolta'} onclick={togglePlay}>{playing ? '⏹' : '▶'}</button>
 	</div>
 </header>
 
-<main class="videos {layout}">
+<main class="videos {layout}" class:solo={!!solo}>
 	{#if showTiles && visible}
-		{#each shownCams as cam (cam.name)}
+		{#each tiles as cam (cam.name)}
 			{@const z = zoomFor(cam.name)}
 			<div class="tile">
 				<iframe
@@ -185,10 +189,10 @@
 				<div
 					class="drag"
 					class:grab={z.s > 1}
-					onpointerdown={(e) => panStart(e, cam.name)}
-					onpointermove={panMove}
-					onpointerup={panEnd}
-					onpointercancel={panEnd}
+					onpointerdown={(e) => pointerDown(e, cam.name)}
+					onpointermove={pointerMove}
+					onpointerup={pointerUp}
+					onpointercancel={pointerUp}
 				></div>
 				<span class="label">{cam.label}</span>
 				<div class="zctl">
@@ -214,6 +218,17 @@
 <audio bind:this={audioEl} preload="none"></audio>
 
 <style>
+	.update {
+		width: 100%;
+		border: 0;
+		padding: 10px 16px;
+		font-size: 14px;
+		font-weight: 600;
+		background: #2f7d32;
+		color: #fff;
+		text-align: center;
+	}
+
 	.topbar {
 		display: flex;
 		align-items: flex-start;
@@ -279,6 +294,9 @@
 	.videos.side {
 		grid-template-columns: 1fr 1fr;
 	}
+	.videos.solo {
+		grid-template-columns: 1fr;
+	}
 
 	.tile {
 		position: relative;
@@ -299,6 +317,7 @@
 		inset: 0;
 		z-index: 1;
 		touch-action: none;
+		cursor: zoom-in;
 	}
 	.tile .drag.grab {
 		cursor: grab;
