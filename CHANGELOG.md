@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/adumat/peekaboo/compare/v0.4.0...v0.5.0) (2026-07-28)
+
+
+### Features
+
+* dedicated /healthz endpoint for liveness/readiness probes ([edc1687](https://github.com/adumat/peekaboo/commit/edc1687e9163de0eaa8faf7b74dfc78f5cd740fd))
+
 ## [0.4.0](https://github.com/adumat/peekaboo/compare/v0.3.0...v0.4.0) (2026-07-28)
 
 
