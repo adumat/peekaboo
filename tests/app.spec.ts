@@ -34,3 +34,9 @@ test('tapping a tile toggles fullscreen/solo', async ({ page }) => {
 	await page.getByRole('button', { name: 'Esci da schermo intero' }).click();
 	await expect(page.locator('.tile')).toHaveCount(2);
 });
+
+test('healthz responds 200', async ({ request }) => {
+	const res = await request.get('/healthz');
+	expect(res.status()).toBe(200);
+	expect(await res.text()).toBe('ok');
+});
