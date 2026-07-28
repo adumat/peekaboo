@@ -17,7 +17,7 @@ sw.addEventListener('install', (event) => {
 	event.waitUntil(
 		caches
 			.open(CACHE)
-			.then((c) => c.addAll([...ASSETS, '/'])) // '/' too, for offline navigation
+			.then((c) => c.addAll([...ASSETS]))
 			.then(() => sw.skipWaiting())
 	);
 });
@@ -49,19 +49,8 @@ sw.addEventListener('fetch', (event) => {
 		return;
 	}
 
-	// Navigations -> network-first (fresh config-driven shell), cached shell offline.
-	if (req.mode === 'navigate') {
-		event.respondWith(
-			fetch(req)
-				.then((res) => {
-					const copy = res.clone();
-					caches.open(CACHE).then((c) => c.put('/', copy));
-					return res;
-				})
-				.catch(() => caches.match('/') as Promise<Response>)
-		);
-		return;
-	}
-
-	// Everything else: straight to the network, no caching.
+	// Navigations pass through to the network (no respondWith) so the browser
+	// handles the OIDC login redirect natively — a SW-synthesized cross-origin
+	// navigation response breaks the auth flow.
+	// Everything else also goes straight to the network, uncached.
 });

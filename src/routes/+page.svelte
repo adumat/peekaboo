@@ -118,9 +118,18 @@
 		zoom = load<Record<string, Zoom>>('peekaboo:zoom', {});
 		const savedSel = load<string[] | null>('peekaboo:selected', null);
 
-		fetch('/api/config')
-			.then((r) => r.json())
-			.then((cfg: { go2rtc: string; cameras: Camera[] }) => {
+		fetch('/api/config', { redirect: 'manual' })
+			.then((r) => {
+				// no/expired session -> the request was redirected to the OIDC provider;
+				// do a top-level navigation so the browser runs the login flow natively.
+				if (r.type === 'opaqueredirect' || r.status === 401 || r.status === 403) {
+					location.href = '/';
+					return null;
+				}
+				return r.json();
+			})
+			.then((cfg: { go2rtc: string; cameras: Camera[] } | null) => {
+				if (!cfg) return;
 				cameras = cfg.cameras;
 				go2rtc = cfg.go2rtc;
 				const names = new Set(cameras.map((c) => c.name));
