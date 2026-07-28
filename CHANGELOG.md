@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/adumat/peekaboo/compare/v0.5.1...v0.5.2) (2026-07-28)
+
+
+### Bug Fixes
+
+* cut audio latency ~5s -&gt; ~1.5s ([c033741](https://github.com/adumat/peekaboo/commit/c0337415096d9fffb72180acf67776b11e2b6c6b))
+
 ## [0.5.1](https://github.com/adumat/peekaboo/compare/v0.5.0...v0.5.1) (2026-07-28)
 
 
