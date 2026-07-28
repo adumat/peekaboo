@@ -16,16 +16,15 @@ What's shipped and what's next. Not commitments — priorities can shift.
 - **v0.3.0** — proper app icon (peeking eyes).
 - **v0.4.0** — tap a tile for fullscreen/solo, a "new version available" update
   prompt, a Playwright e2e smoke in CI, and a multi-arch image (amd64 + arm64).
-
-## Next — robustness & project quality
-
-- [ ] Auth story: document a reverse-proxy / OIDC setup (there is no built-in auth).
+- **v0.5.0** — dedicated `/healthz` liveness/readiness endpoint.
 
 ## Next — UX polish
 
 - [ ] Make the target latency configurable (currently a fixed ~1.5–2s).
 
-## Next — audio & ops
+## Next — audio
 
 - [ ] Configurable audio bitrate.
-- [ ] Dedicated health/readiness endpoint (instead of probing `/`).
+
+> Auth is intentionally out of scope: Peekaboo ships no built-in auth — put it
+> behind your own ingress / reverse-proxy / OIDC (e.g. Authentik via the gateway).
