@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/adumat/peekaboo/compare/v0.3.0...v0.4.0) (2026-07-28)
+
+
+### Features
+
+* tap-to-fullscreen, PWA update prompt, e2e tests, multi-arch image ([1bc9cef](https://github.com/adumat/peekaboo/commit/1bc9cef093cf94ec68d2a02bafe76c60118725ed))
+
 ## [0.3.0](https://github.com/adumat/peekaboo/compare/v0.2.2...v0.3.0) (2026-07-27)
 
 
