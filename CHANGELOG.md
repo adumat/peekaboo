@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.3](https://github.com/adumat/peekaboo/compare/v0.5.2...v0.5.3) (2026-07-28)
+
+
+### Bug Fixes
+
+* **docker:** build multi-arch without emulating the JS build under QEMU ([2f41da5](https://github.com/adumat/peekaboo/commit/2f41da550f8ac6473f221e078d093a321198d3e5))
+
 ## [0.5.2](https://github.com/adumat/peekaboo/compare/v0.5.1...v0.5.2) (2026-07-28)
 
 
