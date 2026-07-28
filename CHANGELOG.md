@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/adumat/peekaboo/compare/v0.5.0...v0.5.1) (2026-07-28)
+
+
+### Bug Fixes
+
+* make the PWA work behind OIDC (Authentik) auth ([b9bb9c0](https://github.com/adumat/peekaboo/commit/b9bb9c09dffe7d7184cf8a6392d9dd795cf3229b))
+
 ## [0.5.0](https://github.com/adumat/peekaboo/compare/v0.4.0...v0.5.0) (2026-07-28)
 
 
