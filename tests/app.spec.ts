@@ -8,7 +8,7 @@ test('config-driven UI renders and every tile fits on screen', async ({ page }) 
 
 	// cameras from the config become toggle chips
 	await expect(page.locator('.chip')).toHaveCount(2);
-	await expect(page.getByRole('button', { name: 'Sofia' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Sofia', exact: true })).toBeVisible();
 
 	// one video tile per selected camera, pointing at go2rtc's WebRTC page
 	const tiles = page.locator('.tile iframe');
@@ -39,4 +39,24 @@ test('healthz responds 200', async ({ request }) => {
 	const res = await request.get('/healthz');
 	expect(res.status()).toBe(200);
 	expect(await res.text()).toBe('ok');
+});
+
+test('per-camera volume: boost is encoded in the audio URL and persists', async ({ page }) => {
+	await page.goto('/', { waitUntil: 'domcontentloaded' });
+	await expect(page.locator('.tile')).toHaveCount(2);
+
+	// start audio, then boost the first tile to 150%
+	await page.getByRole('button', { name: 'Ascolta' }).click();
+	await page.locator('.tile .vctl .spk').first().click(); // open popover
+	await page.locator('.tile .vctl .vslider').first().fill('1.5');
+
+	// the audio element re-requests the gained mix (debounced ~400ms)
+	await expect
+		.poll(() => page.locator('audio').evaluate((a: HTMLAudioElement) => a.src))
+		.toContain(':1.5');
+
+	// persists across reload
+	await page.reload({ waitUntil: 'domcontentloaded' });
+	await page.locator('.tile .vctl .spk').first().click();
+	await expect(page.locator('.tile .vctl .vslider').first()).toHaveValue('1.5');
 });
