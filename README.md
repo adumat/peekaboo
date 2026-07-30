@@ -45,6 +45,7 @@ go2rtc:
   url: "http://go2rtc.example.lan:1984" # go2rtc web UI, reachable from the browser
   rtsp: "go2rtc:8554"                   # go2rtc RTSP, reachable from peekaboo
 idleTimeout: 15                          # seconds to keep ffmpeg alive after the last listener
+maxGain: 1.5                             # max per-camera volume multiplier (>=1); 1.5 = boost to 150%
 cameras:
   - name: living-room                    # go2rtc stream id
     label: "Living room"                 # shown in the UI
@@ -53,7 +54,8 @@ cameras:
 ```
 
 A few knobs also read from the environment: `GO2RTC_URL`, `GO2RTC_RTSP`,
-`PEEKABOO_IDLE_TIMEOUT`, `PEEKABOO_CONFIG`. Cameras must come from the config file.
+`PEEKABOO_IDLE_TIMEOUT`, `PEEKABOO_MAX_GAIN`, `PEEKABOO_CONFIG`. Cameras must come
+from the config file.
 
 See [`config.example.yaml`](config.example.yaml) and
 [`examples/go2rtc.yaml`](examples/go2rtc.yaml) for a matching pair.

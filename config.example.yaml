@@ -13,6 +13,10 @@ go2rtc:
 # so a quick reload doesn't respawn it. Also settable via PEEKABOO_IDLE_TIMEOUT.
 idleTimeout: 15
 
+# Maximum per-camera volume multiplier the UI allows (>= 1). Default 1.5 = 150%.
+# Lets you boost a quiet camera above 100%. Also settable via PEEKABOO_MAX_GAIN.
+maxGain: 1.5
+
 # Cameras to expose. `name` is the go2rtc stream id; `label` is shown in the UI.
 # Peekaboo lets you listen to any combination of these (mixed on demand).
 cameras:
