@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.0](https://github.com/adumat/peekaboo/compare/v0.5.3...v0.6.0) (2026-07-30)
+
+
+### Features
+
+* **server:** per-camera gain in the audio mix with PEEKABOO_MAX_GAIN ([e7ee179](https://github.com/adumat/peekaboo/commit/e7ee179333733238ca5f39bb9f6b3e1849102cc2))
+* **streams:** apply per-camera volume in the ffmpeg mix ([057caa2](https://github.com/adumat/peekaboo/commit/057caa27d55593250d3f8c34dcad64ba21bcb931))
+* **streams:** gain-aware camera spec key (normalizeSpecs, specKey) ([50a4280](https://github.com/adumat/peekaboo/commit/50a428067aab4fdbefe3e71a27993abfb0f71da7))
+* **ui:** per-camera volume with pop-out slider and &gt;100% boost ([ccd6fdf](https://github.com/adumat/peekaboo/commit/ccd6fdfe0175bcc31d2b84ce6fed3559e60f1da2))
+
 ## [0.5.3](https://github.com/adumat/peekaboo/compare/v0.5.2...v0.5.3) (2026-07-28)
 
 
