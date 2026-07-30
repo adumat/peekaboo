@@ -9,6 +9,8 @@
  * caught up — inaudible, no skips. A hard jump is a last resort for huge gaps only.
  */
 
+import { encodeSelection } from '$lib/selection';
+
 const WATCHDOG_MS = 1000;
 const TARGET_LAG_S = 1; // latency we sync to, behind the live edge (also the buffer left)
 const CATCHUP_HIGH_S = 2.5; // drift past this -> speed up a touch
@@ -21,6 +23,7 @@ export type StatusListener = (status: string, playing: boolean) => void;
 
 export class Player {
 	private selection: string[] = [];
+	private gains: Record<string, number> = {};
 	private label = '';
 	private timer: ReturnType<typeof setInterval> | null = null;
 	private lastTime = 0;
@@ -63,8 +66,9 @@ export class Player {
 		return this.reconnects;
 	}
 
-	play(selection: string[], label: string): void {
+	play(selection: string[], gains: Record<string, number>, label: string): void {
 		this.selection = [...new Set(selection)].sort();
+		this.gains = gains;
 		this.label = label;
 		if (!this.selection.length) return this.stop();
 		this.synced = false;
@@ -99,7 +103,7 @@ export class Player {
 
 	private url(bust = false): string {
 		const q = bust ? `?t=${Date.now()}` : '';
-		return `/audio/${this.selection.join(',')}${q}`;
+		return `/audio/${encodeSelection(this.selection, this.gains)}${q}`;
 	}
 
 	private reconnect(msg: string): void {

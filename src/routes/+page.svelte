@@ -16,6 +16,9 @@
 	let layout = $state<'stack' | 'side'>('stack');
 	let showTiles = $state(true);
 	let zoom = $state<Record<string, Zoom>>({});
+	let volume = $state<Record<string, number>>({});
+	let maxGain = $state(1.5);
+	let openVol = $state<string | null>(null); // which tile's volume popover is open
 	let solo = $state<string | null>(null);
 
 	let playing = $state(false);
@@ -45,11 +48,24 @@
 	$effect(() => {
 		if (ready) save('peekaboo:zoom', zoom);
 	});
+	$effect(() => {
+		if (ready) save('peekaboo:volume', volume);
+	});
 
 	// ---- audio -------------------------------------------------------------
+	let applyTimer: ReturnType<typeof setTimeout> | null = null;
 	function apply() {
 		if (!selected.length) return player.stop();
-		player.play(selected, selectedLabel);
+		player.play(selected, volume, selectedLabel);
+	}
+	// volume changes re-request the (server-mixed) stream; debounce so a slider
+	// drag or repeated steps collapse into a single reconnect.
+	function debouncedApply() {
+		if (applyTimer) clearTimeout(applyTimer);
+		applyTimer = setTimeout(() => {
+			applyTimer = null;
+			if (playing) apply();
+		}, 400);
 	}
 	function togglePlay() {
 		if (playing) player.stop();
@@ -78,6 +94,16 @@
 	}
 	function zoomReset(name: string) {
 		setZoom(name, { ...DEFAULT_ZOOM });
+	}
+
+	// ---- per-camera volume (gain multiplier; 1 = 100%) --------------------
+	const volFor = (name: string): number => volume[name] ?? 1;
+	function setVolume(name: string, v: number) {
+		volume = { ...volume, [name]: clamp(v, 0, maxGain) };
+		if (playing) debouncedApply();
+	}
+	function volReset(name: string) {
+		setVolume(name, 1);
 	}
 	function toggleSolo(name: string) {
 		solo = solo === name ? null : name;
@@ -116,6 +142,7 @@
 		layout = load<'stack' | 'side'>('peekaboo:layout', 'stack');
 		showTiles = load('peekaboo:tiles', true);
 		zoom = load<Record<string, Zoom>>('peekaboo:zoom', {});
+		volume = load<Record<string, number>>('peekaboo:volume', {});
 		const savedSel = load<string[] | null>('peekaboo:selected', null);
 
 		fetch('/api/config', { redirect: 'manual' })
@@ -128,10 +155,11 @@
 				}
 				return r.json();
 			})
-			.then((cfg: { go2rtc: string; cameras: Camera[] } | null) => {
+			.then((cfg: { go2rtc: string; cameras: Camera[]; maxGain?: number } | null) => {
 				if (!cfg) return;
 				cameras = cfg.cameras;
 				go2rtc = cfg.go2rtc;
+				maxGain = typeof cfg.maxGain === 'number' && cfg.maxGain >= 1 ? cfg.maxGain : 1.5;
 				const names = new Set(cameras.map((c) => c.name));
 				const restored = (savedSel ?? []).filter((n) => names.has(n));
 				selected = restored.length ? restored : cameras.map((c) => c.name);
@@ -208,6 +236,31 @@
 					<button onclick={() => zoomBy(cam.name, -0.25)} aria-label="Zoom out">−</button>
 					<button onclick={() => zoomReset(cam.name)} aria-label="Reset zoom">⟲</button>
 					<button onclick={() => zoomBy(cam.name, 0.25)} aria-label="Zoom in">＋</button>
+				</div>
+				<div class="vctl">
+					{#if openVol === cam.name}
+						<input
+							class="vslider"
+							type="range"
+							min="0"
+							max={maxGain}
+							step="0.05"
+							value={volFor(cam.name)}
+							aria-label="Volume {cam.label}"
+							oninput={(e) => setVolume(cam.name, +e.currentTarget.value)}
+						/>
+					{/if}
+					<button
+						class="spk"
+						class:muted={volFor(cam.name) === 0}
+						class:boost={volFor(cam.name) > 1}
+						aria-label="Volume {cam.label}"
+						title="Volume (doppio tap = 100%)"
+						onclick={() => (openVol = openVol === cam.name ? null : cam.name)}
+						ondblclick={() => volReset(cam.name)}
+					>
+						{volFor(cam.name) === 0 ? '🔇' : '🔊'}<span class="pct">{Math.round(volFor(cam.name) * 100)}%</span>
+					</button>
 				</div>
 			</div>
 		{/each}
@@ -358,6 +411,44 @@
 		color: #fff;
 		font-size: 17px;
 		line-height: 1;
+	}
+
+	.tile .vctl {
+		position: absolute;
+		left: 6px;
+		bottom: 6px;
+		z-index: 2;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.tile .vctl .spk {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		height: 34px;
+		padding: 0 10px;
+		border: 0;
+		border-radius: 9px;
+		background: rgba(0, 0, 0, 0.55);
+		color: #fff;
+		font-size: 15px;
+		line-height: 1;
+	}
+	.tile .vctl .spk .pct {
+		font-size: 12px;
+		font-variant-numeric: tabular-nums;
+	}
+	.tile .vctl .spk.boost {
+		color: #ffd479;
+	}
+	.tile .vctl .spk.muted {
+		opacity: 0.6;
+	}
+	.tile .vctl .vslider {
+		width: 120px;
+		accent-color: #2f7d32;
+		touch-action: none;
 	}
 
 	.statusbar {
