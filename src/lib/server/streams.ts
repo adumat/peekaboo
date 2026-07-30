@@ -5,8 +5,28 @@ const BITRATE = '96k';
 
 type Ctrl = ReadableStreamDefaultController<Uint8Array>;
 
+export type CamGain = { name: string; gain: number };
+
+/** Dedupe by name (last wins), sort by name — so any permutation of the same
+ *  selection+gains maps to one shared ffmpeg. */
+export function normalizeSpecs(specs: CamGain[]): CamGain[] {
+	const byName = new Map<string, number>();
+	for (const s of specs) byName.set(s.name, s.gain);
+	return [...byName.entries()]
+		.map(([name, gain]) => ({ name, gain }))
+		.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Canonical key / URL form: "name" when gain===1, else "name:gain". */
+export function specKey(specs: CamGain[]): string {
+	return normalizeSpecs(specs)
+		.map((s) => (s.gain === 1 ? s.name : `${s.name}:${s.gain}`))
+		.join(',');
+}
+
 /** Canonical key for a set of cameras: deduped + sorted by id, so every
- *  permutation of the same selection maps to a single shared ffmpeg. */
+ *  permutation of the same selection maps to a single shared ffmpeg.
+ *  TODO(task4): replaced by specKey once getStream is gain-aware. */
 export function streamKey(cameras: string[]): string {
 	return [...new Set(cameras)].sort().join(',');
 }
