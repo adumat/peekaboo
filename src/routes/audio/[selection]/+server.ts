@@ -2,20 +2,20 @@ import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getConfig } from '$lib/server/config';
 import { getStream } from '$lib/server/streams';
+import { parseSelection } from '$lib/server/selection';
 
 /**
  * GET /audio/<sel>  where <sel> is a comma-separated selection of camera ids,
- * e.g. /audio/sofias-room  or  /audio/sofias-room,nicolos-room  (order-insensitive).
- * Streams a single live MP3 that is the mix of the selected cameras.
+ * each optionally suffixed with :gain (e.g. sofia,nicolo:1.5). Order-insensitive.
+ * Streams a single live MP3 that is the (optionally per-camera gained) mix.
  */
 export const GET: RequestHandler = ({ params }) => {
-	const valid = new Set(getConfig().cameras.map((c) => c.name));
-	const selected = [...new Set(params.selection.split(',').map((s) => s.trim()).filter(Boolean))];
-	if (selected.length === 0 || selected.some((n) => !valid.has(n))) {
-		error(404, `unknown camera selection: ${params.selection}`);
-	}
+	const cfg = getConfig();
+	const valid = new Set(cfg.cameras.map((c) => c.name));
+	const specs = parseSelection(params.selection, valid, cfg.maxGain);
+	if (!specs) error(404, `unknown camera selection: ${params.selection}`);
 
-	const stream = getStream(selected);
+	const stream = getStream(specs);
 	let ctrl: ReadableStreamDefaultController<Uint8Array>;
 	const body = new ReadableStream<Uint8Array>({
 		start(c) {

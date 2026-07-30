@@ -24,13 +24,6 @@ export function specKey(specs: CamGain[]): string {
 		.join(',');
 }
 
-/** Canonical key for a set of cameras: deduped + sorted by id, so every
- *  permutation of the same selection maps to a single shared ffmpeg.
- *  TODO(task4): replaced by specKey once getStream is gain-aware. */
-export function streamKey(cameras: string[]): string {
-	return [...new Set(cameras)].sort().join(',');
-}
-
 /**
  * Build the ffmpeg argv for a (normalized) set of camera specs. Pure — no config
  * or process access — so it is unit-testable. A per-input `volume` filter is
@@ -102,18 +95,17 @@ class Stream {
 	private proc: ChildProcess | null = null;
 	private idle: ReturnType<typeof setTimeout> | null = null;
 
-	/** @param cameras deduped, sorted camera ids (>= 1) */
-	constructor(private cameras: string[]) {}
+	/** @param specs deduped, sorted camera+gain specs (>= 1) */
+	constructor(private specs: CamGain[]) {}
 
 	private buildArgs(): string[] {
-		const specs = this.cameras.map((name) => ({ name, gain: 1 }));
-		return buildFfmpegArgs(specs, { rtspBase: getConfig().go2rtc.rtsp, bitrate: BITRATE });
+		return buildFfmpegArgs(this.specs, { rtspBase: getConfig().go2rtc.rtsp, bitrate: BITRATE });
 	}
 
 	private start(): void {
 		if (this.proc) return;
 		const args = ['-hide_banner', '-loglevel', 'warning', ...this.buildArgs()];
-		const label = this.cameras.join('+');
+		const label = specKey(this.specs);
 		console.log(`[peekaboo] ffmpeg start "${label}"`);
 		const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'inherit'] });
 		this.proc = proc;
@@ -167,12 +159,13 @@ class Stream {
 
 const streams = new Map<string, Stream>();
 
-/** Get (or lazily create) the shared stream for a selection of cameras. */
-export function getStream(cameras: string[]): Stream {
-	const key = streamKey(cameras);
+/** Get (or lazily create) the shared stream for a selection of cameras+gains. */
+export function getStream(specs: CamGain[]): Stream {
+	const norm = normalizeSpecs(specs);
+	const key = specKey(norm);
 	let s = streams.get(key);
 	if (!s) {
-		s = new Stream(key.split(','));
+		s = new Stream(norm);
 		streams.set(key, s);
 	}
 	return s;
