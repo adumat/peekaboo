@@ -32,6 +32,65 @@ export function streamKey(cameras: string[]): string {
 }
 
 /**
+ * Build the ffmpeg argv for a (normalized) set of camera specs. Pure — no config
+ * or process access — so it is unit-testable. A per-input `volume` filter is
+ * applied only when a camera's gain !== 1, so the all-default case is byte-
+ * identical to the historic passthrough/amix args.
+ */
+export function buildFfmpegArgs(specs: CamGain[], opts: { rtspBase: string; bitrate: string }): string[] {
+	// `?audio=pcma` asks go2rtc for ONLY the camera's native G.711 a-law track:
+	// no h264 to demux (avoids the video-analysis stall + amix dts warnings and
+	// cuts data), and it pins the direct camera codec so go2rtc never routes us
+	// through its on-demand opus transcoder (a `ffmpeg:...#audio=opus` producer,
+	// which would add buffering/latency).
+	const rtsp = (name: string) => `rtsp://${opts.rtspBase}/${name}?audio=pcma`;
+	// analyzeduration 0 + probesize 32 are the big latency win: without them
+	// ffmpeg spends ~4s analysing the input before emitting anything (measured),
+	// so on-demand playback starts seconds behind live.
+	const inFlags = [
+		'-rtsp_transport', 'tcp',
+		'-fflags', 'nobuffer',
+		'-flags', 'low_delay',
+		'-analyzeduration', '0',
+		'-probesize', '32'
+	];
+	// -ar 44100 is MANDATORY: Tapo cams emit 8kHz MP3 (MPEG-2.5), which Chrome
+	// silently cannot decode (bytes arrive, playback never starts, no error).
+	// flush_packets/avioflags direct/write_xing 0 stop the muxer buffering frames.
+	const enc = [
+		'-vn',
+		'-c:a', 'libmp3lame', '-b:a', opts.bitrate, '-ar', '44100', '-ac', '1',
+		'-flush_packets', '1',
+		'-avioflags', 'direct',
+		'-write_xing', '0',
+		'-f', 'mp3', 'pipe:1'
+	];
+
+	const inputs = specs.flatMap((c) => [...inFlags, '-i', rtsp(c.name)]);
+	const gained = specs.some((c) => c.gain !== 1);
+
+	if (specs.length === 1) {
+		return specs[0].gain === 1
+			? [...inputs, ...enc]
+			: [...inputs, '-af', `volume=${specs[0].gain}`, ...enc];
+	}
+	if (!gained) {
+		return [...inputs, '-filter_complex', `amix=inputs=${specs.length}:duration=longest:normalize=0`, ...enc];
+	}
+	const parts: string[] = [];
+	const labels: string[] = [];
+	specs.forEach((c, i) => {
+		if (c.gain === 1) labels.push(`[${i}:a]`);
+		else {
+			parts.push(`[${i}:a]volume=${c.gain}[g${i}]`);
+			labels.push(`[g${i}]`);
+		}
+	});
+	const filter = `${parts.length ? parts.join(';') + ';' : ''}${labels.join('')}amix=inputs=${specs.length}:duration=longest:normalize=0`;
+	return [...inputs, '-filter_complex', filter, ...enc];
+}
+
+/**
  * One on-demand ffmpeg per selection of cameras (any subset of the configured
  * ones), fanned out to every current listener. Spawned on the FIRST listener,
  * killed `idleTimeout` seconds after the LAST one leaves — so we never
@@ -47,38 +106,8 @@ class Stream {
 	constructor(private cameras: string[]) {}
 
 	private buildArgs(): string[] {
-		const { go2rtc } = getConfig();
-		// `?audio=pcma` asks go2rtc for ONLY the camera's native G.711 a-law track:
-		// no h264 to demux (avoids the video-analysis stall + amix dts warnings and
-		// cuts data), and it pins the direct camera codec so go2rtc never routes us
-		// through its on-demand opus transcoder (a `ffmpeg:...#audio=opus` producer,
-		// which would add buffering/latency).
-		const rtsp = (name: string) => `rtsp://${go2rtc.rtsp}/${name}?audio=pcma`;
-		// analyzeduration 0 + probesize 32 are the big latency win: without them
-		// ffmpeg spends ~4s analysing the input before emitting anything (measured),
-		// so on-demand playback starts seconds behind live.
-		const inFlags = [
-			'-rtsp_transport', 'tcp',
-			'-fflags', 'nobuffer',
-			'-flags', 'low_delay',
-			'-analyzeduration', '0',
-			'-probesize', '32'
-		];
-		// -ar 44100 is MANDATORY: Tapo cams emit 8kHz MP3 (MPEG-2.5), which Chrome
-		// silently cannot decode (bytes arrive, playback never starts, no error).
-		// flush_packets/avioflags direct/write_xing 0 stop the muxer buffering frames.
-		const enc = [
-			'-vn',
-			'-c:a', 'libmp3lame', '-b:a', BITRATE, '-ar', '44100', '-ac', '1',
-			'-flush_packets', '1',
-			'-avioflags', 'direct',
-			'-write_xing', '0',
-			'-f', 'mp3', 'pipe:1'
-		];
-
-		const inputs = this.cameras.flatMap((c) => [...inFlags, '-i', rtsp(c)]);
-		if (this.cameras.length === 1) return [...inputs, ...enc];
-		return [...inputs, '-filter_complex', `amix=inputs=${this.cameras.length}:duration=longest:normalize=0`, ...enc];
+		const specs = this.cameras.map((name) => ({ name, gain: 1 }));
+		return buildFfmpegArgs(specs, { rtspBase: getConfig().go2rtc.rtsp, bitrate: BITRATE });
 	}
 
 	private start(): void {
