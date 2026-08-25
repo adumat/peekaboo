@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/adumat/peekaboo/compare/v0.6.0...v0.7.0) (2026-08-25)
+
+
+### Features
+
+* **audio:** realtime WebRTC audio backend with a WebRTC/MP3 toggle ([681d2bc](https://github.com/adumat/peekaboo/commit/681d2bcf5eaa530bd80206a89c0e17fbaa7eb520))
+
 ## [0.6.0](https://github.com/adumat/peekaboo/compare/v0.5.3...v0.6.0) (2026-07-30)
 
 
