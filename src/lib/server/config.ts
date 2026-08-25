@@ -14,6 +14,9 @@ export interface Config {
 		url: string;
 		/** host:port the audio pipeline (ffmpeg) pulls RTSP from */
 		rtsp: string;
+		/** base URL the SERVER uses to reach go2rtc's API (WHEP proxy); prefer the
+		 *  internal service address. Defaults to `url` when unset. */
+		api: string;
 	};
 	/** seconds to keep an ffmpeg running after the last listener leaves */
 	idleTimeout: number;
@@ -42,7 +45,10 @@ export function getConfig(): Config {
 	cached = {
 		go2rtc: {
 			url: String(g.url ?? process.env.GO2RTC_URL ?? 'http://localhost:1984').replace(/\/+$/, ''),
-			rtsp: g.rtsp ?? process.env.GO2RTC_RTSP ?? 'localhost:8554'
+			rtsp: g.rtsp ?? process.env.GO2RTC_RTSP ?? 'localhost:8554',
+			api: String(
+				g.api ?? process.env.GO2RTC_API_URL ?? g.url ?? process.env.GO2RTC_URL ?? 'http://localhost:1984'
+			).replace(/\/+$/, '')
 		},
 		idleTimeout: Number.isFinite(idle) ? idle : DEFAULT_IDLE_TIMEOUT,
 		maxGain: Number.isFinite(mg) && mg >= 1 ? mg : DEFAULT_MAX_GAIN,

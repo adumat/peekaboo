@@ -35,6 +35,20 @@ test('tapping a tile toggles fullscreen/solo', async ({ page }) => {
 	await expect(page.locator('.tile')).toHaveCount(2);
 });
 
+test('audio backend toggle defaults to WebRTC and switches to MP3', async ({ page }) => {
+	await page.goto('/', { waitUntil: 'domcontentloaded' });
+	const toggle = page.getByRole('button', { name: 'Cambia motore audio' });
+	await expect(toggle).toHaveAttribute('title', /WebRTC/);
+	await toggle.click();
+	await expect(toggle).toHaveAttribute('title', /MP3/);
+	// persists across reload
+	await page.reload({ waitUntil: 'domcontentloaded' });
+	await expect(page.getByRole('button', { name: 'Cambia motore audio' })).toHaveAttribute(
+		'title',
+		/MP3/
+	);
+});
+
 test('healthz responds 200', async ({ request }) => {
 	const res = await request.get('/healthz');
 	expect(res.status()).toBe(200);
@@ -44,6 +58,10 @@ test('healthz responds 200', async ({ request }) => {
 test('per-camera volume: boost is encoded in the audio URL and persists', async ({ page }) => {
 	await page.goto('/', { waitUntil: 'domcontentloaded' });
 	await expect(page.locator('.tile')).toHaveCount(2);
+
+	// this test exercises the MP3 backend's gained-mix URL; the app now defaults to
+	// the WebRTC backend, so switch to MP3 first.
+	await page.getByRole('button', { name: 'Cambia motore audio' }).click();
 
 	// start audio, then boost the first tile to 150%
 	await page.getByRole('button', { name: 'Ascolta' }).click();

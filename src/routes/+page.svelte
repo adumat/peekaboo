@@ -30,6 +30,11 @@
 	let player: Player;
 	let ready = $state(false);
 
+	let audioBackend = $state<'webrtc' | 'mp3'>('webrtc');
+	// AudioManager is client-only (imports video-rtc.js which extends HTMLElement),
+	// so it is dynamically imported in onMount and created lazily.
+	let manager: import('$lib/audio').AudioManager | null = null;
+
 	const shownCams = $derived(cameras.filter((c) => selected.includes(c.name)));
 	const selectedLabel = $derived(shownCams.map((c) => c.label).join(' + '));
 	// which tiles to render: the solo'd camera, else every selected one
@@ -51,15 +56,23 @@
 	$effect(() => {
 		if (ready) save('peekaboo:volume', volume);
 	});
+	$effect(() => {
+		if (ready) save('peekaboo:audioBackend', audioBackend);
+	});
 
 	// ---- audio -------------------------------------------------------------
 	let applyTimer: ReturnType<typeof setTimeout> | null = null;
 	function apply() {
-		if (!selected.length) return player.stop();
-		player.play(selected, volume, selectedLabel);
+		if (!selected.length) return stopAudio();
+		if (audioBackend === 'webrtc') manager?.play(selected, volume, selectedLabel);
+		else player.play(selected, volume, selectedLabel);
 	}
-	// volume changes re-request the (server-mixed) stream; debounce so a slider
-	// drag or repeated steps collapse into a single reconnect.
+	function stopAudio() {
+		if (audioBackend === 'webrtc') manager?.stop();
+		else player.stop();
+	}
+	// MP3 must re-request the server mix on volume change; debounce so a slider drag
+	// or repeated steps collapse into a single reconnect. (WebRTC applies gain live.)
 	function debouncedApply() {
 		if (applyTimer) clearTimeout(applyTimer);
 		applyTimer = setTimeout(() => {
@@ -68,8 +81,15 @@
 		}, 400);
 	}
 	function togglePlay() {
-		if (playing) player.stop();
+		if (playing) stopAudio();
 		else apply();
+	}
+	function switchBackend(next: 'webrtc' | 'mp3') {
+		if (next === audioBackend) return;
+		const wasPlaying = playing;
+		stopAudio();
+		audioBackend = next;
+		if (wasPlaying) apply();
 	}
 	function toggleCamera(name: string) {
 		selected = selected.includes(name) ? selected.filter((n) => n !== name) : [...selected, name];
@@ -100,7 +120,9 @@
 	const volFor = (name: string): number => volume[name] ?? 1;
 	function setVolume(name: string, v: number) {
 		volume = { ...volume, [name]: clamp(v, 0, maxGain) };
-		if (playing) debouncedApply();
+		if (!playing) return;
+		if (audioBackend === 'webrtc') manager?.setGain(name, volume[name]);
+		else debouncedApply();
 	}
 	function volReset(name: string) {
 		setVolume(name, 1);
@@ -143,6 +165,7 @@
 		showTiles = load('peekaboo:tiles', true);
 		zoom = load<Record<string, Zoom>>('peekaboo:zoom', {});
 		volume = load<Record<string, number>>('peekaboo:volume', {});
+		audioBackend = load<'webrtc' | 'mp3'>('peekaboo:audioBackend', 'webrtc');
 		const savedSel = load<string[] | null>('peekaboo:selected', null);
 
 		fetch('/api/config', { redirect: 'manual' })
@@ -155,10 +178,17 @@
 				}
 				return r.json();
 			})
-			.then((cfg: { go2rtc: string; cameras: Camera[]; maxGain?: number } | null) => {
+			.then(async (cfg: { go2rtc: string; cameras: Camera[]; maxGain?: number } | null) => {
 				if (!cfg) return;
 				cameras = cfg.cameras;
 				go2rtc = cfg.go2rtc;
+				// build the WebRTC manager (audio signaling goes through peekaboo's
+				// same-origin WHEP proxy, so it needs no go2rtc URL)
+				const { AudioManager } = await import('$lib/audio');
+				manager = new AudioManager((s, p) => {
+					status = s;
+					playing = p;
+				});
 				maxGain = typeof cfg.maxGain === 'number' && cfg.maxGain >= 1 ? cfg.maxGain : 1.5;
 				const names = new Set(cameras.map((c) => c.name));
 				const restored = (savedSel ?? []).filter((n) => names.has(n));
@@ -183,6 +213,7 @@
 			clearInterval(updTimer);
 			document.removeEventListener('visibilitychange', onVis);
 			player.destroy();
+			manager?.destroy();
 		};
 	});
 </script>
@@ -202,6 +233,12 @@
 		{/each}
 	</div>
 	<div class="controls">
+			<button
+				class="ctl"
+				aria-label="Cambia motore audio"
+				title={audioBackend === 'webrtc' ? 'Audio: WebRTC (realtime)' : 'Audio: MP3'}
+				onclick={() => switchBackend(audioBackend === 'webrtc' ? 'mp3' : 'webrtc')}
+			>{audioBackend === 'webrtc' ? '⚡' : '🎵'}</button>
 		<button class="ctl" class:active={showTiles} aria-label="Mostra/nascondi video" title="Mostra/nascondi video" onclick={() => (showTiles = !showTiles)}>📹</button>
 		{#if solo}
 			<button class="ctl" aria-label="Esci da schermo intero" title="Esci da schermo intero" onclick={() => (solo = null)}>▦</button>
@@ -273,7 +310,7 @@
 		{status}
 	</span>
 	<span class="nerd">
-		{#if playing}delay {stats.lag.toFixed(1)}s · buf {stats.buffer.toFixed(1)}s · ↻{stats.reconnects} · {/if}v{version}
+		{#if playing && audioBackend === 'mp3'}delay {stats.lag.toFixed(1)}s · buf {stats.buffer.toFixed(1)}s · ↻{stats.reconnects} · {/if}{audioBackend === 'webrtc' ? 'WebRTC · ' : ''}v{version}
 	</span>
 </footer>
 
