@@ -1,11 +1,12 @@
-import { whepUrl, gainPlan, diffSelection } from './webrtc';
+import { whepUrl, diffSelection } from './webrtc';
 
 type Conn = {
 	pc: RTCPeerConnection;
-	el: HTMLAudioElement;
 	stream: MediaStream;
-	ctx: AudioContext | null;
-	node: GainNode | null;
+	el: HTMLAudioElement; // plays the stream directly (element mode) or as a muted pump (mix mode)
+	source: MediaStreamAudioSourceNode | null; // created lazily when this conn joins the mix
+	gnode: GainNode | null;
+	inMix: boolean;
 	gain: number;
 	closed: boolean;
 };
@@ -30,15 +31,25 @@ function waitIceGathering(pc: RTCPeerConnection): Promise<void> {
 }
 
 /**
- * Realtime WebRTC audio backend: one audio-only WHEP connection per selected camera
- * (signaled through peekaboo's same-origin proxy), played through a hidden `<audio>`
- * element (background-eligible) with live per-camera gain. Parallel to (and independent
- * of) the MP3 `Player`; same public surface plus `setGain`.
+ * Realtime WebRTC audio: one audio-only WHEP connection per camera (signaled through
+ * peekaboo's same-origin proxy), with live per-camera gain.
+ *
+ * Playback is adaptive so mobile plays every selected camera (phones output only ONE
+ * media element at a time):
+ *  - ONE camera at <=100%: play its own `<audio>` element directly — no AudioContext,
+ *    which is the path that survives screen-off/lock.
+ *  - TWO+ cameras (or any boost >100%): mix them through a single AudioContext
+ *    (per-camera GainNode) into one hidden sink `<audio>`, so the phone hears one
+ *    combined stream. The per-camera elements stay as muted pumps (Chrome needs the
+ *    WebRTC stream attached to a playing media element for createMediaStreamSource).
  */
 export class AudioManager {
 	private conns = new Map<string, Conn>();
 	private selection: string[] = [];
 	private label = '';
+	private ctx: AudioContext | null = null;
+	private dest: MediaStreamAudioDestinationNode | null = null;
+	private sink: HTMLAudioElement | null = null;
 
 	constructor(private onStatus: StatusListener) {}
 
@@ -53,7 +64,11 @@ export class AudioManager {
 		this.selection = next;
 		for (const cam of remove) this.close(cam);
 		for (const cam of add) void this.open(cam, gains[cam] ?? 1);
-		for (const cam of next) this.setGain(cam, gains[cam] ?? 1);
+		for (const cam of next) {
+			const c = this.conns.get(cam);
+			if (c) c.gain = gains[cam] ?? 1;
+		}
+		this.route();
 		this.setMediaSession();
 		this.onStatus(next.length ? 'Live' : 'In pausa', this.playing);
 	}
@@ -61,27 +76,25 @@ export class AudioManager {
 	stop(): void {
 		for (const cam of [...this.conns.keys()]) this.close(cam);
 		this.selection = [];
+		this.route();
 		if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none';
 		this.onStatus('In pausa', false);
 	}
 
-	/** Live per-camera volume. element `.volume` for <=100%, Web Audio for boost. */
 	setGain(cam: string, gain: number): void {
 		const c = this.conns.get(cam);
 		if (!c) return;
 		c.gain = gain;
-		const plan = gainPlan(gain);
-		c.el.volume = plan.elementVolume;
-		if (plan.contextGain != null) {
-			this.ensureGraph(c);
-			if (c.node) c.node.gain.value = plan.contextGain;
-		} else if (c.node) {
-			c.node.gain.value = 1; // element `.volume` now carries the level
-		}
+		this.route();
 	}
 
 	destroy(): void {
 		this.stop();
+		this.sink?.remove();
+		this.sink = null;
+		this.dest = null;
+		this.ctx?.close().catch(() => {});
+		this.ctx = null;
 	}
 
 	private async open(cam: string, gain: number): Promise<void> {
@@ -92,14 +105,14 @@ export class AudioManager {
 		el.autoplay = true;
 		el.style.display = 'none';
 		document.body.appendChild(el);
-		const conn: Conn = { pc, el, stream, ctx: null, node: null, gain, closed: false };
+		const conn: Conn = { pc, stream, el, source: null, gnode: null, inMix: false, gain, closed: false };
 		this.conns.set(cam, conn);
 
 		pc.ontrack = (e) => {
 			stream.addTrack(e.track);
 			el.srcObject = stream;
 			void el.play().catch(() => {});
-			this.setGain(cam, conn.gain); // (re)apply once audio is flowing
+			this.route(); // this conn now has a live track
 		};
 		pc.oniceconnectionstatechange = () => {
 			const st = pc.iceConnectionState;
@@ -125,6 +138,59 @@ export class AudioManager {
 		}
 	}
 
+	/**
+	 * Decide element vs. mix playback for the currently-connected cameras and wire the
+	 * Web Audio graph to match. Idempotent — safe to call on every change.
+	 */
+	private route(): void {
+		const active = [...this.conns.values()].filter((c) => c.stream.getAudioTracks().length);
+		const useMix = active.length >= 2 || active.some((c) => c.gain > 1);
+
+		if (useMix) {
+			this.ensureMix();
+			for (const c of active) {
+				c.el.muted = true; // silent pump; audio flows through the mix
+				if (!c.source && this.ctx) c.source = this.ctx.createMediaStreamSource(c.stream);
+				if (!c.gnode && this.ctx) c.gnode = this.ctx.createGain();
+				if (!c.inMix && c.source && c.gnode && this.dest) {
+					c.source.connect(c.gnode).connect(this.dest);
+					c.inMix = true;
+				}
+				if (c.gnode) c.gnode.gain.value = c.gain;
+			}
+			void this.ctx?.resume().catch(() => {});
+			void this.sink?.play().catch(() => {});
+		} else {
+			// element mode: at most one active camera at <=100%
+			for (const c of this.conns.values()) {
+				if (c.inMix) {
+					try {
+						c.source?.disconnect();
+						c.gnode?.disconnect();
+					} catch {
+						/* already disconnected */
+					}
+					c.inMix = false;
+				}
+				c.el.muted = false;
+				c.el.volume = Math.max(0, Math.min(1, c.gain));
+			}
+			this.sink?.pause();
+		}
+	}
+
+	private ensureMix(): void {
+		if (this.ctx) return;
+		this.ctx = new AudioContext();
+		this.dest = this.ctx.createMediaStreamDestination();
+		this.sink = document.createElement('audio');
+		this.sink.autoplay = true;
+		this.sink.style.display = 'none';
+		this.sink.dataset.peekabooSink = '1';
+		document.body.appendChild(this.sink);
+		this.sink.srcObject = this.dest.stream;
+	}
+
 	private reconnect(cam: string): void {
 		if (!this.selection.includes(cam)) return;
 		const gain = this.conns.get(cam)?.gain ?? 1;
@@ -132,23 +198,16 @@ export class AudioManager {
 		void this.open(cam, gain);
 	}
 
-	private ensureGraph(c: Conn): void {
-		if (c.ctx || !c.stream.getAudioTracks().length) return;
-		const ctx = new AudioContext();
-		const source = ctx.createMediaStreamSource(c.stream);
-		const node = ctx.createGain();
-		source.connect(node).connect(ctx.destination);
-		c.el.muted = true; // audio now flows through the graph; avoid double output
-		void ctx.resume().catch(() => {});
-		c.ctx = ctx;
-		c.node = node;
-	}
-
 	private close(cam: string): void {
 		const c = this.conns.get(cam);
 		if (!c) return;
 		c.closed = true;
-		c.ctx?.close().catch(() => {});
+		try {
+			c.source?.disconnect();
+			c.gnode?.disconnect();
+		} catch {
+			/* already disconnected */
+		}
 		try {
 			c.pc.close();
 		} catch {
