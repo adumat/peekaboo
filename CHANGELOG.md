@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/adumat/peekaboo/compare/v0.7.0...v0.7.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **audio:** mix multiple cameras into one output so mobile plays them all ([ba831e1](https://github.com/adumat/peekaboo/commit/ba831e1849b3cb0262079b5601471f09d57b4a23))
+
 ## [0.7.0](https://github.com/adumat/peekaboo/compare/v0.6.0...v0.7.0) (2026-08-25)
 
 
