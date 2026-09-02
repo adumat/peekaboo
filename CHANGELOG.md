@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/adumat/peekaboo/compare/v0.7.1...v0.7.2) (2026-09-02)
+
+
+### Bug Fixes
+
+* **video:** allow autoplay on the go2rtc iframe so iOS starts the video ([744a071](https://github.com/adumat/peekaboo/commit/744a0711277964fe5afd3b2dc7d48204ac9b457c))
+
 ## [0.7.1](https://github.com/adumat/peekaboo/compare/v0.7.0...v0.7.1) (2026-08-26)
 
 
