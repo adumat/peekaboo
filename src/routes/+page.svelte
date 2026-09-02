@@ -257,6 +257,7 @@
 				<iframe
 					title={cam.label}
 					src={`${go2rtc}/webrtc.html?src=${cam.name}&media=video`}
+					allow="autoplay"
 					style="transform: scale({z.s}) translate({z.x}%, {z.y}%)"
 				></iframe>
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
